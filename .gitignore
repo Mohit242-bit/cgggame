@@ -1,0 +1,26 @@
+# Build output / generated project files (regenerate with CMake)
+build_x86/
+build-win32/
+build/
+CMakeFiles/
+CMakeCache.txt
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+.vs/
+
+# Compiler / linker intermediates
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.log
+*.tlog
+*.lastbuildstate
+*.recipe
+
+# Runtime-generated save data (not source)
+/StandingFile.txt
+cocos2d/

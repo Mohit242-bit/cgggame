@@ -1,0 +1,11 @@
+# PowerShell:
+Set-Location "C:\Users\mohit\Desktop\Gun-Mayhem-master"
+Remove-Item ".\dist\Gun-Mayhem.exe" -Force -ErrorAction SilentlyContinue
+cmake -S . -B build-win32 -G "Visual Studio 17 2022" -A Win32
+cmake --build build-win32 --config Release --target Gun-Mayhem
+
+# Command Prompt (cmd.exe):
+# cd /d C:\Users\mohit\Desktop\Gun-Mayhem-master
+# del /f /q dist\Gun-Mayhem.exe
+# cmake -S . -B build-win32 -G "Visual Studio 17 2022" -A Win32
+# cmake --build build-win32 --config Release --target Gun-Mayhem
