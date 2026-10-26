@@ -9,7 +9,8 @@ This is the one file to prep from. It assumes the examiner can ask about *anythi
 3. What's actually NEW — ELCD and AHTR
 4. How it's built in the game — with real code snippets and exact file paths
 5. **The tough-question bank** — the part most worth rereading right before the viva
-6. The slide deck, page by page (re-verified against your actual `.pptx`)
+6. The slide deck, page by page — slides 9–18, the FA2 section (re-verified against your actual `.pptx`)
+7. Where everything actually lives — the repo map
 
 ---
 
@@ -195,32 +196,326 @@ A: Exactly the six open problems in Section IX — the most interesting two: con
 
 ---
 
-## 6. The Slide Deck, Page By Page
+## 6. The Slide Deck, Page By Page — Slides 9–18 (the FA2 build-out section)
 
-*(Re-verified directly against your actual `FA2 — ELCD & AHTR in Gun Mayhem.pptx`, 12 slides, unchanged since last check.)*
+*(Your current deck runs the FA1 recap as slides 1–8, then this FA2 section as slides 9–18 — re-verified directly against screenshots of the actual deck, word for word.)*
 
-**Slide 1 — Title.** State the full title, course code, your name and PRN. One line: "FA1 was the survey and theory; FA2 is that theory built into a real, working game, measurable live."
+Every slide below gives you three things: **what's on it** (verbatim), **what to say**, term by term, and **the exact code** backing the claim, with the real file path and current line numbers — open these files and have them ready in tabs before you present.
 
-**Slide 2 — Context · From FA1.** Recap both fixes in one breath each: ELCD = confidence decay kills ghosting; AHTR = spend rays where variance is high, not evenly. Both quoted taglines are on the slide — say them.
+---
 
-**Slide 3 — FA2 · Scope.** FA1 planned a throwaway SDL2 demo; FA2 instead integrated into a real, pre-existing game (Gun Mayhem, Cocos2d-x 4.0). Say it was scoped deliberately small and correct, not sprawling.
+### Slide 9 — Title
 
-**Slide 4 — FA2 · Test Bed.** Why this game fits: one camera, constant combat, natural ephemeral lights every shot, cheap axis-aligned occluders, and — critically — repeatable on demand for a live demo.
+> Real-Time Many-Light Rendering via Spatiotemporal Reservoir Resampling
+> *From Survey to Implementation — ELCD & AHTR inside* **Gun Mayhem**
+> Mohit Rawat · PRN 124B1B140 · Computer Graphics & Gaming · BCE25PE01 · FA2
 
-**Slide 5 — Architecture.** The five files of `Classes/Lighting/`, one sentence each (see Part 4 above for the actual code). Say the design goal out loud: "a research feature addable or removable without risk to the shipping game."
+**Say:** read the title once, slowly, then unpack the three technical terms in it before moving on — don't assume the examiner reads them the same way you do:
+- **"Real-time"** — has to run inside the game's own frame budget (60fps, ~16ms/frame), not a batch render.
+- **"Many-light rendering"** — the N-lights × M-pixels cost problem (Part 2 above).
+- **"Spatiotemporal Reservoir Resampling"** — this *is* the full name of ReSTIR (Bitterli et al., SIGGRAPH 2020): spatio = reuse across neighboring pixels, temporal = reuse across frames, reservoir resampling = the weighted-sampling data structure that makes the reuse cheap and unbiased.
 
-**Slide 6 — Integration.** Three touch points, all small: `Bullet.cpp` (2 lines), `MapBase.h` (forward decl + pointer), `MapBase.cpp` (construct, update, destroy). This is your evidence for code quality.
+Close with the one-line frame: *"FA1 was the survey and the theory. FA2 is that theory, actually built and running inside a real game you can watch work, live."*
 
-**Slide 7 — Algorithm → Code.** The six-step `ComputeFrame()` walkthrough (Part 4 above has the real snippets). Say each step's name and what it does in one sentence; don't read code aloud here — that's what Part 4 of this document is for if asked directly.
+**Code:** none — but if asked "is there an actual paper, not just slides," this exact title is the cover-page title of [docs/Research_Paper.docx](../docs/Research_Paper.docx) / [docs/Research_Paper.pdf](../docs/Research_Paper.pdf) too — same title, same name, same PRN. Say so; it shows the deck and the paper are one consistent piece of work, not two disconnected artifacts.
 
-**Slide 8 — Before/After.** Point at the dashed line (light expiry). Before: glow persists past it — the ghost. After: glow stops exactly at it — Theorem 1, drawn.
+---
 
-**Slide 9 — Validation.** F1/F2/F3 described on the slide — **this is your cue to switch to the live demo.** Don't linger here; say the line, then alt-tab into the running game.
+### Slide 10 — Recap: two fixes to standard ReSTIR
 
-**Slide 10 — Limitations.** Exactly two bullets, verbatim: 2D/CPU/tile-granularity analogue (not a GPU-numbers claim), and single-level AHTR refinement (not a full quadtree). Say both plainly — this is rigor, not a weakness.
+> **ELCD — Ephemeral Light Confidence Decay** (temporal fix)
+> Each light carries a confidence κ = τ_remaining / τ_initial. When the light expires, κ = 0 and its glow disappears the same frame — no ~20-frame ghost.
+> *"Lights fade out of the renderer's memory exactly as fast as they fade out of the scene."*
+>
+> **AHTR — Adaptive Hierarchical Tile Resampling** (spatial fix)
+> Measure how much lighting varies in each screen tile. Split busy tiles and give them more rays; give flat tiles fewer.
+> *"Spend the ray budget where the eye would actually notice, not evenly everywhere."*
 
-**Slide 11 — Conclusion.** The three numbers: 0 ghost frames, 6.25× fewer shadow rays, 1 shadow ray per leaf tile. Say "proven," not "measured."
+**Say, term by term:**
+- **κ (kappa)** — the confidence number, just a fraction: how much of the light's life is left, 1.0 when freshly spawned, sliding down to 0.0 at expiry.
+- **"~20-frame ghost"** — 20 is `M_cap`, ReSTIR's own temporal-history cap. *Without* ELCD, a reservoir can keep echoing a dead light's old sample for up to `M_cap` frames before its weight naturally dilutes away — that lingering, incorrect glow is the "ghost." ELCD doesn't shorten that window, it makes it exactly zero by construction.
+- **AHTR's "variance"** — how much the candidate lights in one tile disagree in brightness/weight. High disagreement ⇒ a shadow boundary is probably cutting through that tile ⇒ worth spending more rays there.
 
-**Slide 12 — Thank you.** Name, PRN, course code. Open the floor.
+**Code:**
+- `Classes/Lighting/LightSource.h:30-33` — the κ formula itself:
+  ```cpp
+  float confidence() const {
+      if (initialLifetime <= 0.f) return 0.f;
+      return cocos2d::clampf(remainingLifetime / initialLifetime, 0.f, 1.f);
+  }
+  ```
+- `Classes/Lighting/LightingPass.cpp:140` — `M_cap` isn't a comment, it's a literal `20.f` passed right here: `combined.CombineTemporal(tile.prevReservoir, confidence, 20.f);` — point at that exact `20.f` if asked "where is M_cap in the code."
 
-**Timing reminder:** slides 1–4 fast (~3 min), 5–7 conceptual not code-reading (~2–3 min), 8–9 then straight into the live demo (most of your remaining time), 10–12 land and stop (~2 min). The demo is your strongest evidence — don't shortchange it to get through more slides.
+---
+
+### Slide 11 — From survey to a real, working game
+
+> **FA1 plan:** a new SDL2/raycasting demo built from scratch — a synthetic test harness, useful once, then thrown away.
+> **FA2 built:** ELCD + AHTR integrated into Gun Mayhem — a complete C++/Cocos2d-x 2-player platformer shooter.
+> cocos2d-x 4.0 (engine, Windows native build) · 2 light types (muzzle flash + bullet glow)
+
+**Say:** be candid and precise here — Gun Mayhem is a pre-existing open-source Cocos2d-x project you took over and substantially extended (lighting system, bomb weapon, rebindable keys, bug fixes), not something built from nothing. Say that plainly if asked; integrating correctly into someone else's real codebase is a *harder*, more realistic skill than a clean-room toy demo, and examiners respect the honesty.
+
+One correction to have ready: the slide says "2 light types" — that's the two types fired on *every shot* (muzzle flash + bullet glow). There is a third type, **Explosion**, from the bomb weapon — covered on the Integration slide (12) and Architecture slide (13). If asked "only two?", say: "two per gunshot; a third — Explosion — comes from the bomb, shown next."
+
+**Code:** `CMakeLists.txt` / `cmake.txt` at the repo root are your evidence of "native Windows build" — point at them if asked how it's actually compiled (MSBuild via CMake-generated `.vcxproj`, not the engine's own Android/iOS build scripts).
+
+---
+
+### Slide 12 — Why Gun Mayhem fits the research
+
+> **One camera, constant combat** — local 2-player shared-screen shooter running in real time.
+> **Natural ephemeral lights** — every shot makes a muzzle flash and a bullet glow — short-lived lights.
+> **Cheap, clean occluders** — axis-aligned solid platforms make a simple 2D "shadow ray" test.
+> **Repeatable on demand** — firing is player-triggered, so ELCD/AHTR can be shown live, not only in a benchmark.
+
+**Say, one sentence per card:**
+- *One camera, constant combat* — one viewport, continuously under fire, so there's a sustained signal to light — unlike a quiet exploration game where lights would be rare.
+- *Natural ephemeral lights* — the short-lived light objects ELCD is designed around already exist every time a player shoots — you didn't have to invent a synthetic scenario to get ephemeral lights.
+- *Cheap, clean occluders* — the platform collision is already stored as flat `[x_start, x_end]` numeric spans per row (`MapBase::Floor`) — reused directly as occluder geometry. No new geometry system was built for this.
+- *Repeatable on demand* — because lights are player-triggered, not scripted or timed, you can fire weapons live in front of the examiner and the debug HUD reacts in real time — this is your demo story in one sentence.
+
+**Code:** `Classes/Lighting/Visibility.h:9-15` (the contract) and `Visibility.cpp:14-32` (the implementation) — the shadow ray walks the *same* `floorRows`/`floorBase`/`floorHeight` triple that `MapBase`/`CharacterBase` already use for stand/fall collision:
+```cpp
+bool IsVisible(const cocos2d::Vec2& a, const cocos2d::Vec2& b,
+               const std::vector<std::vector<float>>& floorRows,
+               float floorBase, float floorHeight);
+```
+
+---
+
+### Slide 13 — The self-contained `Classes/Lighting/` module
+
+| File | Responsibility |
+|---|---|
+| `LightSource.h` | Ephemeral light data type + κ_l(t) confidence formula |
+| `LightManager.h/.cpp` | Owns active lights — spawns, ages, expires them |
+| `Reservoir.h` | Weighted reservoir (RIS) + temporal combine — core ReSTIR structure |
+| `Visibility.h/.cpp` | 2D "shadow ray": line-vs-platform occlusion test |
+| `LightingPass.h/.cpp` | Orchestrates candidates → AHTR → ELCD → shadow test → render + HUD |
+
+> *"Design goal: a research feature that can be added or removed without risk to the game"*
+
+**Say:** walk the table top to bottom, one sentence each (above), then explain *why* the design-goal line is literally true, not just a slogan: every single call into this module is either (a) internal, inside `Classes/Lighting/` itself, or (b) a null-checked wrapper call from `MapBase` (slide 14). Delete the whole folder and its 3 call sites, and the base game still compiles and runs — nothing else in the codebase has a hard dependency on it.
+
+**Code — all five files, in full, for reference:**
+```cpp
+// LightSource.h — Classes/Lighting/LightSource.h:20-34
+struct LightSource {
+    int id = -1;
+    cocos2d::Vec2 position;
+    cocos2d::Color4F color = cocos2d::Color4F::WHITE;
+    float radius = 0.f;
+    float initialLifetime = 0.f;
+    float remainingLifetime = 0.f;
+    LightType type = LightType::BulletGlow;
+    float confidence() const { /* κ_l(t), see Slide 10 */ }
+};
+```
+```cpp
+// LightManager.cpp — Classes/Lighting/LightManager.cpp:20-34 (the three spawners)
+void LightManager::SpawnMuzzleFlash(const cocos2d::Vec2& position) {
+    SpawnLight(position, LightType::MuzzleFlash, 3.f / 60.f, 55.f, Color4F(1.f, 0.75f, 0.3f, 1.f));
+}
+void LightManager::SpawnBulletGlow(const cocos2d::Vec2& position) {
+    SpawnLight(position, LightType::BulletGlow, 1.f / 60.f, 22.f, Color4F(1.f, 0.95f, 0.6f, 1.f));
+}
+void LightManager::SpawnExplosion(const cocos2d::Vec2& position) {
+    SpawnLight(position, LightType::Explosion, 45.f / 60.f, 130.f, Color4F(1.f, 0.45f, 0.12f, 1.f));
+}
+```
+```cpp
+// Reservoir.h — Classes/Lighting/Reservoir.h:22-58 (candidate step + ELCD-decayed temporal step)
+bool Update(int id, float weight, const Vec2& pos, const Color4F& c, float r); // RIS Pass 1
+void CombineTemporal(const Reservoir& prev, float confidenceScale, float mCap); // ELCD lives here
+```
+```cpp
+// Visibility.cpp — Classes/Lighting/Visibility.cpp:14-32 (the shadow ray)
+bool IsVisible(const Vec2& a, const Vec2& b, const std::vector<std::vector<float>>& floorRows,
+               float floorBase, float floorHeight);
+```
+```cpp
+// LightingPass.h — Classes/Lighting/LightingPass.h:23-62 (the orchestrator)
+class LightingPass {
+public:
+    explicit LightingPass(MapBase* map);
+    void Update(float dt);              // called once/frame from MapBase
+private:
+    void ComputeFrame();                // the 6-step algorithm — Slide 15
+    void Render();                      // the overlay + debug HUD — Slide 17
+};
+```
+
+---
+
+### Slide 14 — Touch points into the existing game
+
+| File | Change |
+|---|---|
+| `Weapons/Bullet/Bullet.cpp` | 2 lines: on bullet spawn, call `SpawnMuzzleFlash(muzzlePos)` and `SpawnBulletGlow(bulletPos)` |
+| `Map/MapBase.h` | Forward-declares `Lighting::LightingPass`, adds one pointer member + 2 thin wrapper declarations |
+| `Map/MapBase.cpp` | Builds the pass in `initPlayer()`, calls `lighting->Update(dt)` each frame, implements the wrappers, deletes it in the destructor |
+
+> *Evidence for: Code / Module Quality & Reusability*
+
+**Say:** that footer line is literally the grading rubric category this slide is aimed at — say so if asked why the slide exists. Then walk the 3 rows: "the entire integration footprint into a pre-existing, unfamiliar codebase is two lines in one file, one pointer member, and three null-checked wrapper calls. Everything else is self-contained inside `Classes/Lighting/`, from Slide 13."
+
+**Code — exact current locations (open these three files):**
+```cpp
+// Classes/Weapons/Bullet/Bullet.cpp:24-25 — the whole hook
+player->map->SpawnMuzzleFlash(init);
+player->map->SpawnBulletGlow(currentPoint);
+```
+```cpp
+// Classes/Map/MapBase.h:19   — forward declaration
+namespace Lighting { class LightingPass; }
+// Classes/Map/MapBase.h:33-37 — wrapper declarations + comment
+void SpawnMuzzleFlash(const Vec2& pos);
+void SpawnBulletGlow(const Vec2& pos);
+void SpawnExplosion(const Vec2& pos);
+// Classes/Map/MapBase.h:66   — the one pointer member
+Lighting::LightingPass* lighting = nullptr;
+```
+```cpp
+// Classes/Map/MapBase.cpp:7    — #include "Lighting/LightingPass.h"
+// Classes/Map/MapBase.cpp:23   — delete lighting;              (destructor)
+// Classes/Map/MapBase.cpp:37   — if (lighting) lighting->Update(dt);   (every frame)
+// Classes/Map/MapBase.cpp:40-52 — the 3 wrapper bodies, each one null-checked:
+void MapBase::SpawnMuzzleFlash(const Vec2& pos) {
+    if (lighting) lighting->GetLightManager().SpawnMuzzleFlash(pos);
+}
+// Classes/Map/MapBase.cpp:125  — if (!lighting) lighting = new Lighting::LightingPass(this);  (lazy init)
+```
+If asked *"is this safe — can it crash the game?"*: every call site null-checks `lighting` first; if the pass somehow isn't built yet, the call is a silent no-op that frame, never a crash.
+
+---
+
+### Slide 15 — `LightingPass::ComputeFrame()`, step by step
+
+| # | Step | Function |
+|---|---|---|
+| 01 | Tile grid | Play area split into a fixed 16×9 grid (144 tiles), kept across frames so reservoirs carry state |
+| 02 | Candidate generation | Every light overlapping a tile is folded in by weighted reservoir sampling — `Reservoir::Update()`, ReSTIR Pass 1 |
+| 03 | AHTR refinement | More than one competing light in a tile → evaluate at 2×2 sub-tiles, keep the strongest |
+| 04 | ELCD temporal reuse | Last frame's reservoir scaled by κ_l(t). Light expired → κ=0 → stale sample adds nothing. Theorem 1, exactly |
+| 05 | Shadow ray | One test per tile: tile centre → chosen light, against `MapBase::Floor` |
+| 06 | Render + HUD | Soft additive glow; HUD shows active lights, shadow tests, tile count, ghost streak |
+
+**Say:** walk all six steps in order, naming both the step and the real function, exactly as the table does — this slide *is* the algorithm, nothing is hidden behind a diagram. On step 01, stress "kept across frames" — that persistence (`tile.prevReservoir`) is *what makes temporal reuse possible at all*; if tiles were rebuilt fresh every frame there'd be nothing for ELCD to decay. On step 04, say the word **"exactly"** out loud — Theorem 1 is a guarantee by construction, not an empirical improvement.
+
+**Code — the real function, `Classes/Lighting/LightingPass.cpp:107-168`:**
+```cpp
+void LightingPass::ComputeFrame()
+{
+    for (auto& tile : tiles_) {
+        // Step 02 — candidate generation (ReSTIR Pass 1)
+        Reservoir combined = BuildCandidateReservoir(lights, tile.bounds, &candidates);
+
+        // Step 03 — AHTR: only tiles with >1 competing light get refined
+        if (ahtrEnabled_ && candidates.size() > 1) {
+            for (int q = 0; q < 4; ++q) {
+                Reservoir sub = BuildCandidateReservoir(lights, Quadrant(tile.bounds, q), nullptr);
+                if (sub.FinalWeight() > best.FinalWeight()) best = sub;
+            }
+            combined = best;
+        }
+
+        // Step 04 — ELCD-decayed temporal reuse
+        float confidence = elcdEnabled_ ? prevLight->confidence() : 0.f;
+        combined.CombineTemporal(tile.prevReservoir, confidence, 20.f);
+
+        // Step 05 — the shadow ray
+        bool visible = IsVisible(tileCenter, combined.position, map_->Floor, map_->floor_base, map_->floor_height);
+    }
+}
+```
+(`Render()`, step 06, is `LightingPass.cpp:170-194` — see Slide 17.)
+
+---
+
+### Slide 16 — Before and after: ELCD + AHTR
+
+> **Before · standard ReSTIR** — glow over time: 1.0, 0.8, 0.6 … fading past the expiry line. *"Ghost glow lingers ~20 frames after expiry."* Over space: same ray count in every tile, busy or flat.
+>
+> **After · ELCD + AHTR** — glow over time: 1.0, 0.67, 0.33, **0** — stops exactly at the dashed expiry line. κ = τ_remaining/τ_initial. *"0 ghost frames — gone the same frame."* Over space: the contested tile is split 2×2; flat tiles stay coarse.
+
+**Say:** this slide is a picture of Theorem 1 and Theorem 3, walk it left-to-right: on the left, standard ReSTIR's glow visibly survives past the dashed "light expires" line — that persistence past expiry *is* the ghost, drawn. On the right, the same timeline under ELCD hits exactly 0 at the same dashed line — not faded, zero. For the spatial half: point at the highlighted 2×2 quadrant (the contested tile, where two amber light-dots overlap) versus the rest of the grid, which stays at one ray (blue dot) per tile — that's AHTR's variance-triggered split from Slide 15, step 03, drawn.
+
+**Code:** same two snippets as Slide 10/15 — `LightSource.h:30-33` (κ formula) for the temporal half, and the `if (ahtrEnabled_ && candidates.size() > 1)` branch in `LightingPass.cpp:122-130` for the spatial half.
+
+---
+
+### Slide 17 — Live validation tooling, in the running game
+
+> **F1** — show/hide the debug HUD — active lights, shadow tests, ghost streak
+> **F2** — toggle ELCD at runtime — ghost-streak counter changes at once
+> **F3** — toggle AHTR at runtime — shadow-test count changes at once
+
+**Say:** read the three key bindings, then — **this is your cue to stop talking and switch to the live demo.** Don't linger on this slide; alt-tab straight into the running `Gun-Mayhem.exe` and actually fire a weapon.
+
+Important, and directly useful if your debug HUD is sitting at idle when you switch over (exactly like the screenshot you'd see before anyone's shooting): **"Active lights: 0" / "Shadow tests this frame: 0/144" is the *correct*, expected reading while nobody is firing** — lights are spawned only on muzzle flash, bullet glow, and explosion events (Slide 11/13), so standing still genuinely produces zero. If an examiner points at a "0" and asks "is this even doing anything?", say exactly that — then fire a shot and watch the numbers move. A system whose counters sit honestly at zero when idle, and move the instant something happens, is stronger demo evidence than numbers that are always nonzero — it proves the HUD is reading live state, not a hardcoded display.
+
+**Code:**
+```cpp
+// Classes/Lighting/LightingPass.cpp:58-70 — the constructor, F1/F2/F3 listener
+keyListener_->onKeyPressed = [this](EventKeyboard::KeyCode code, Event*) {
+    if (code == Key::KEY_F1) { debugVisible_ = !debugVisible_; hud_->setVisible(debugVisible_); }
+    else if (code == Key::KEY_F2) { elcdEnabled_ = !elcdEnabled_; }
+    else if (code == Key::KEY_F3) { ahtrEnabled_ = !ahtrEnabled_; }
+};
+```
+```cpp
+// Classes/Lighting/LightingPass.cpp:183-193 — Render(), the HUD string itself
+std::snprintf(buf, sizeof(buf),
+    "Lighting Debug (F1 toggle)\nELCD [F2]: %s   AHTR [F3]: %s\nActive lights: %d\n"
+    "Shadow tests this frame: %d / %d tiles\nGhost streak: %d frames (max %d)",
+    elcdEnabled_ ? "ON" : "OFF", ahtrEnabled_ ? "ON" : "OFF",
+    activeLightsThisFrame_, shadowTestsThisFrame_, (int)tiles_.size(),
+    currentGhostStreak_, maxGhostStreak_);
+```
+All five numbers in that string (`activeLightsThisFrame_`, `shadowTestsThisFrame_`, `tiles_.size()`, `currentGhostStreak_`, `maxGhostStreak_`) are live counters recomputed every frame inside `ComputeFrame()` (Slide 15) — not display text.
+
+---
+
+### Slide 18 — Conclusion
+
+> ReSTIR's ghost-frame and fixed-grid flaws are real — and fixable.
+> **0** ghost frames with ELCD · **6.25×** fewer shadow rays with AHTR · **1** shadow ray per leaf tile
+> *"The proof: ELCD and AHTR are implemented and measured — in theory (FA1) and live inside Gun Mayhem (FA2)."*
+
+**Say:** the three numbers, then the closing line verbatim. Land it and stop — don't keep talking past your own conclusion slide.
+
+**The one sharp question to be ready for** — a careful examiner may cross-check the "6.25×" against Lemma 2 in your own paper and notice `R(f) = 4/(1+3f)` *tops out at 4× as f→0* and sits around 3–3.5× at realistic f. **Both numbers are correct — they answer different questions, and you should say exactly this:**
+- **Lemma 2's `R(f)`** (Research_Paper.docx/pdf, Section V) is the *marginal* cost ratio of one refinement decision: 4 sub-tile rays vs 1 coarse-tile ray, for a single tile.
+- **The "6.25×" on this slide** is a *whole-scene worked example* from the FA1 analysis ([docs/FA2_PPT_Content.md](../docs/FA2_PPT_Content.md), AHTR section): a dense explosion scene where a fully-uniform fixed grid costs 1,450 tiles × 8 samples/tile = 11,600 rays, versus AHTR's adaptive allocation of ~320 leaf tiles totalling ~4,800 rays — **11,600 / 4,800 ≈ 6.25×, aggregated over the whole frame**, not the per-tile bound.
+
+Have that distinction ready verbatim — it turns a potential "gotcha" into a demonstration that you actually understand both numbers rather than having copied one onto a slide.
+
+**Code:** none new — this slide is the summary of Slides 10, 15 and 16. If asked to re-derive either number live, `Classes/Lighting/Reservoir.h:61-64` (`FinalWeight()`) and the `R(f)` equation in [docs/Research_Paper.docx](../docs/Research_Paper.docx) are your two sources.
+
+---
+
+**Timing reminder:** slides 1–8 (FA1 recap) fast, slides 9–12 fast (~3 min), 13–15 conceptual, not code-reading aloud (~2–3 min), 16–17 then straight into the live demo (most of your remaining time), 18 lands and stops (~2 min). The demo is your strongest evidence — don't shortchange it to get through more slides.
+
+---
+
+## 7. Where Everything Actually Lives — the repo map
+
+*(If asked "can I see the whole project," or you just need to find a file fast mid-viva.)*
+
+Repo: **https://github.com/Mohit242-bit/cgggame**
+
+| What | Path |
+|---|---|
+| The lighting module (all 5 files) | `Classes/Lighting/` |
+| Bomb weapon (3rd light type, Explosion) | `Classes/Weapons/Bullet/Bomb.cpp/h`, `Classes/Weapons/Gun/Gun_Bomb.cpp/h` |
+| The 2-line integration hook | `Classes/Weapons/Bullet/Bullet.cpp:24-25` |
+| Research paper (Word + PDF, IEEE two-column) | `docs/Research_Paper.docx`, `docs/Research_Paper.pdf` |
+| This document — full defense script | `docs/script.md` |
+| Slide-by-slide content source | `docs/FA2_PPT_Content.md` |
+| Timed presentation script | `docs/Presentation_Script.md` |
+| Term glossary | `docs/Glossary_and_Algorithm.md` |
+| Plain-language explainer (camera, AI, physics, lighting) | `docs/short.md` |
+| Full technical reference | `docs/explain.md` |
+
+Note: the repo's pushed snapshot excludes the vendored `cocos2d-x` engine folder (third-party library code, not your work) to keep the push size sane — your own source, docs, and the research paper are all there in full.
